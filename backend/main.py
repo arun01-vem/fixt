@@ -9,6 +9,7 @@ from typing import Optional
 
 from fastapi import FastAPI, Depends, HTTPException, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 import models, schemas
 from database import engine, Base, get_db
@@ -193,6 +194,7 @@ def create_order(order: schemas.OrderCreate, request: Request, db: Session = Dep
         model=order.model,
         issue=order.issue,
         issue_details=order.issue_details,
+        booking_date=order.booking_date,
         slot=order.slot,
         customer_id=order.customer_id,
         estimated_price=order.estimated_price,
@@ -221,6 +223,16 @@ def create_order(order: schemas.OrderCreate, request: Request, db: Session = Dep
     )
     db.commit()
     return new_order
+
+@app.get("/slots/availability")
+def get_slot_availability(date: str, db: Session = Depends(get_db)):
+    # date format should be YYYY-MM-DD
+    results = db.query(models.Order.slot, func.count(models.Order.id)).filter(
+        models.Order.booking_date == date,
+        models.Order.status.in_(ACTIVE_ORDER_STATUSES)
+    ).group_by(models.Order.slot).all()
+    
+    return {slot: count for slot, count in results}
 
 @app.get("/orders/{order_number}", response_model=schemas.AdminOrder)
 def get_order(order_number: str, db: Session = Depends(get_db)):

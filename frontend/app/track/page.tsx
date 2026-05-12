@@ -13,10 +13,6 @@ function TrackContent() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
-  function prettifyStatus(status: string) {
-    return status.replace(/_/g, " ");
-  }
-
   async function checkStatus() {
     if (!orderId.trim()) return;
 
@@ -67,31 +63,36 @@ function TrackContent() {
         </div>
 
         {order ? (
-          <div className="mt-8 rounded-[28px] bg-[#f5f5f7] p-6">
-            <p className="text-sm font-semibold uppercase text-zinc-500">Current status</p>
-            <p className="mt-3 text-3xl font-bold capitalize">{order.status}</p>
-            <div className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
-              <p><span className="text-zinc-500">Device:</span> <b>{order.device}</b></p>
-              <p><span className="text-zinc-500">Issue:</span> <b>{order.issue}</b></p>
-              <p><span className="text-zinc-500">Area:</span> <b>{order.village ?? "Pending"}, {order.district ?? "Pending"}</b></p>
-              <p><span className="text-zinc-500">Slot:</span> <b>{order.slot ?? "Pending"}</b></p>
-            </div>
-            <div className="mt-6">
-              <p className="text-sm font-semibold uppercase text-zinc-500">Status timeline</p>
-              <div className="mt-3 space-y-2">
-                {(order.status_events ?? []).length === 0 ? (
-                  <p className="text-sm text-zinc-500">Timeline not available yet.</p>
-                ) : (
-                  (order.status_events ?? []).map((event) => (
-                    <div key={event.id} className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm">
-                      <p className="font-semibold capitalize">{prettifyStatus(event.status)}</p>
-                      <p className="text-xs text-zinc-500">{new Date(event.changed_at).toLocaleString()}</p>
-                    </div>
-                  ))
-                )}
+          <>
+            <div className="mt-8 rounded-[28px] bg-[#f5f5f7] p-6">
+              <p className="text-sm font-semibold uppercase text-zinc-500">Current status</p>
+              <p className="mt-3 text-3xl font-bold capitalize">{order.status}</p>
+              <div className="mt-5 grid gap-3 text-sm sm:grid-cols-2">
+                <p><span className="text-zinc-500">Device:</span> <b>{order.device}</b></p>
+                <p><span className="text-zinc-500">Issue:</span> <b>{order.issue}</b></p>
+                <p><span className="text-zinc-500">Area:</span> <b>{order.village ?? "Pending"}, {order.district ?? "Pending"}</b></p>
+                <p><span className="text-zinc-500">Slot:</span> <b>{order.slot ?? "Pending"}</b></p>
               </div>
             </div>
-          </div>
+
+            <div className="mt-8">
+              <p className="text-sm font-semibold uppercase text-zinc-500">Need help? Contact us</p>
+              <div className="mt-4 flex flex-wrap gap-4">
+                <a href="tel:+918008617460" className="flex items-center gap-2 rounded-2xl bg-white border border-zinc-200 px-5 py-3 font-semibold text-zinc-800 transition hover:border-zinc-950">
+                  <span>📞</span> 8008617460
+                </a>
+                <a href="https://www.instagram.com/fixt_official?igsh=MXNhdG5hcHgzaHBxdA==" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-2xl bg-white border border-zinc-200 px-5 py-3 font-semibold text-zinc-800 transition hover:border-zinc-950">
+                  <span>📸</span> Instagram
+                </a>
+                <a href="https://www.youtube.com/@FIXT_OFFICIAL" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-2xl bg-white border border-zinc-200 px-5 py-3 font-semibold text-zinc-800 transition hover:border-zinc-950">
+                  <span>🎥</span> YouTube
+                </a>
+                <a href="https://www.facebook.com/share/1CtktCmDYt/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 rounded-2xl bg-white border border-zinc-200 px-5 py-3 font-semibold text-zinc-800 transition hover:border-zinc-950">
+                  <span>📘</span> Facebook
+                </a>
+              </div>
+            </div>
+          </>
         ) : null}
 
         {error ? (

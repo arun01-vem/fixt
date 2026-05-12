@@ -2,9 +2,9 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createCustomer, createOrder } from "@/lib/api";
+import { createCustomer, createOrder, getSlotAvailability } from "@/lib/api";
 import { SiteLogo } from "@/components/SiteLogo";
 
 type Coordinates = {
@@ -17,7 +17,8 @@ type BookingData = {
   customBrand: string;
   model: string;
   customModel: string;
-  issue: string;
+  issue: string[];
+  customIssue: string;
   issueDetails: string;
   district: string;
   village: string;
@@ -27,6 +28,7 @@ type BookingData = {
   pincode: string;
   nearbyLocation: string;
   landmark: string;
+  bookingDate: string;
   slot: string;
   customerName: string;
   phone: string;
@@ -52,7 +54,6 @@ const BRAND_MODELS: Record<string, string[]> = {
   Vivo: ["Vivo V30", "Vivo V29", "Vivo T3", "Vivo T2", "Vivo Y200", "Vivo Y100", "Vivo Y28", "Other model"],
   Moto: ["Moto Edge 50 Pro", "Moto Edge 40", "Moto G85", "Moto G64", "Moto G54", "Moto G34", "Moto E13", "Other model"],
   iQOO: ["iQOO 12", "iQOO 11", "iQOO Neo 9 Pro", "iQOO Neo 7 Pro", "iQOO Z9", "iQOO Z7 Pro", "iQOO Z6", "Other model"],
-  Other: ["Other model"],
 };
 
 const ISSUE_OPTIONS = [
@@ -61,7 +62,6 @@ const ISSUE_OPTIONS = [
   { name: "Charging Port", detail: "Slow charging, loose cable, no power", max: 1500 },
   { name: "Speaker Problem", detail: "Low volume, mic issue, call audio problem", max: 1200 },
   { name: "Water Damage", detail: "Liquid exposure, dead device, moisture checks", max: 3500 },
-  { name: "Other Issue", detail: "Write the exact problem in your own words", max: 3000 },
 ];
 
 const DISTRICT_VILLAGES: Record<string, string[]> = {
@@ -87,7 +87,8 @@ const INITIAL_BOOKING_DATA: BookingData = {
   customBrand: "",
   model: "",
   customModel: "",
-  issue: "",
+  issue: [],
+  customIssue: "",
   issueDetails: "",
   district: "Jagtial",
   village: "",
@@ -97,18 +98,30 @@ const INITIAL_BOOKING_DATA: BookingData = {
   pincode: "",
   nearbyLocation: "",
   landmark: "",
+  bookingDate: new Date().toISOString().split("T")[0],
   slot: "",
   customerName: "",
   phone: "",
   alternatePhone: "",
 };
 
-function getPrice(issue: string) {
-  const selected = ISSUE_OPTIONS.find((item) => item.name === issue);
-  return {
-    min: issue === "Screen Broken" ? 1000 : 500,
-    max: selected?.max ?? 3000,
-  };
+function getPrice(issues: string[]) {
+  if (issues.length === 0) return { min: 0, max: 0 };
+  
+  const hasScreenBroken = issues.includes("Screen Broken");
+  const min = hasScreenBroken ? 1000 : 500;
+  
+  let totalMax = 0;
+  issues.forEach(issueName => {
+    if (issueName === "Other Issue") {
+      totalMax += 3000;
+    } else {
+      const selected = ISSUE_OPTIONS.find((item) => item.name === issueName);
+      totalMax += selected?.max ?? 3000;
+    }
+  });
+
+  return { min, max: totalMax };
 }
 
 function cleanPhone(value: string) {
@@ -117,6 +130,39 @@ function cleanPhone(value: string) {
 
 function isValidIndianMobile(value: string) {
   return /^[6-9]\d{9}$/.test(value);
+}
+
+function getNextNDays(n: number) {
+  const days = [];
+  for (let i = 0; i < n; i++) {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    days.push({
+      value: d.toISOString().split("T")[0],
+      label: i === 0 ? "Today" : d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short" }),
+    });
+  }
+  return days;
+}
+
+function isSlotInPast(slot: string, selectedDate: string) {
+  const today = new Date().toISOString().split("T")[0];
+  if (selectedDate > today) return false;
+  if (selectedDate < today) return true;
+
+  const now = new Date();
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  const currentTimeInMinutes = currentHour * 60 + currentMinute;
+
+  const slotStarts: Record<string, number> = {
+    "10AM - 12PM": 10 * 60,
+    "12PM - 2PM": 12 * 60,
+    "2PM - 4PM": 14 * 60,
+    "4PM - 6PM": 16 * 60,
+  };
+
+  return currentTimeInMinutes >= slotStarts[slot];
 }
 
 export default function BookingPage() {
@@ -128,14 +174,28 @@ export default function BookingPage() {
   const [bookingData, setBookingData] = useState<BookingData>(INITIAL_BOOKING_DATA);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [slotAvailability, setSlotAvailability] = useState<Record<string, number>>({});
 
-  const availableModels = bookingData.brand ? BRAND_MODELS[bookingData.brand] ?? [] : [];
+  useEffect(() => {
+    async function fetchAvailability() {
+      try {
+        const availability = await getSlotAvailability(bookingData.bookingDate);
+        setSlotAvailability(availability);
+      } catch (err) {
+        console.error("Failed to fetch slot availability:", err);
+      }
+    }
+    fetchAvailability();
+  }, [bookingData.bookingDate]);
+
+  const availableModels = bookingData.brand === "Other" ? ["Other model"] : (bookingData.brand ? BRAND_MODELS[bookingData.brand] ?? [] : []);
   const availableVillages = DISTRICT_VILLAGES[bookingData.district] ?? [];
   const estimate = useMemo(() => getPrice(bookingData.issue), [bookingData.issue]);
   const progress = Math.round((step / 7) * 100);
   const finalBrand = bookingData.brand === "Other" ? bookingData.customBrand.trim() : bookingData.brand;
   const finalModel = bookingData.model === "Other model" ? bookingData.customModel.trim() : bookingData.model;
   const finalVillage = bookingData.village === "Other village" ? bookingData.customVillage.trim() : bookingData.village;
+  const displayIssues = bookingData.issue.map(i => i === "Other Issue" ? bookingData.customIssue.trim() : i).filter(Boolean);
 
   function updateBooking<K extends keyof BookingData>(key: K, value: BookingData[K]) {
     setBookingData((current) => ({ ...current, [key]: value }));
@@ -145,7 +205,7 @@ export default function BookingPage() {
     setBookingData((current) => ({
       ...current,
       brand,
-      customBrand: brand === "Other" ? current.customBrand : "",
+      customBrand: "",
       model: "",
       customModel: "",
     }));
@@ -160,10 +220,40 @@ export default function BookingPage() {
     }));
   }
 
+  function toggleIssue(issueName: string) {
+    setBookingData((current) => {
+      let newIssues = [...current.issue];
+      
+      // If we select a regular issue, remove "Other Issue" and clear customIssue
+      if (newIssues.includes("Other Issue")) {
+        newIssues = [issueName];
+      } else {
+        if (newIssues.includes(issueName)) {
+          newIssues = newIssues.filter((i) => i !== issueName);
+        } else {
+          newIssues.push(issueName);
+        }
+      }
+      
+      return { ...current, issue: newIssues, customIssue: "" };
+    });
+  }
+
+  function selectAllIssues() {
+    setBookingData((current) => {
+      const allRegularIssues = ISSUE_OPTIONS.map((i) => i.name);
+      return { ...current, issue: allRegularIssues, customIssue: "" };
+    });
+  }
+
   function canContinue() {
     if (step === 1) return Boolean(finalBrand && finalModel);
-    if (step === 2) return Boolean(bookingData.issue && (bookingData.issue !== "Other Issue" || bookingData.issueDetails.trim()));
-    if (step === 3) return Boolean(bookingData.issue);
+    if (step === 2) {
+      if (bookingData.issue.length === 0) return false;
+      if (bookingData.issue.includes("Other Issue") && !bookingData.customIssue.trim()) return false;
+      return true;
+    }
+    if (step === 3) return bookingData.issue.length > 0;
     if (step === 4) return Boolean(bookingData.coordinates && bookingData.addressLine.trim() && bookingData.pincode.length === 6 && bookingData.nearbyLocation.trim());
     if (step === 5) return Boolean(bookingData.district && finalVillage && bookingData.slot);
     if (step === 6) {
@@ -209,7 +299,7 @@ export default function BookingPage() {
         device: `${finalBrand} ${finalModel}`,
         brand: finalBrand,
         model: finalModel,
-        issue: finalPayload.issue,
+        issue: displayIssues.join(", "),
         issue_details: finalPayload.issueDetails,
         estimated_price: estimate.max,
         price_min: estimate.min,
@@ -223,14 +313,16 @@ export default function BookingPage() {
         latitude: finalPayload.coordinates?.lat ?? 0,
         longitude: finalPayload.coordinates?.lng ?? 0,
         alternate_phone: finalPayload.alternatePhone,
+        booking_date: finalPayload.bookingDate,
         slot: finalPayload.slot,
       });
 
       const params = new URLSearchParams({
         order: order.order_number ?? "FIXT-PENDING",
         device: `${finalBrand} ${finalModel}`,
-        issue: finalPayload.issue,
+        issue: displayIssues.join(", "),
         area: `${finalVillage}, ${finalPayload.district}`,
+        date: finalPayload.bookingDate,
         slot: finalPayload.slot,
         min: String(estimate.min),
         max: String(estimate.max),
@@ -274,7 +366,7 @@ export default function BookingPage() {
               <p className="text-xs font-semibold uppercase text-zinc-400">Current selection</p>
               <p className="mt-3 text-lg font-semibold">{finalBrand || "Brand pending"}</p>
               <p className="text-sm text-zinc-400">{finalModel || "Model pending"}</p>
-              <p className="mt-3 text-sm text-zinc-300">{bookingData.issue || "Issue pending"}</p>
+              <p className="mt-3 text-sm text-zinc-300">{displayIssues.join(", ") || "Issue pending"}</p>
             </div>
           </aside>
 
@@ -291,24 +383,30 @@ export default function BookingPage() {
                       type="button"
                       onClick={() => pickBrand(brand)}
                       className={`rounded-[22px] border p-5 text-left text-lg font-semibold transition ${
-                        bookingData.brand === brand ? "border-zinc-950 bg-zinc-950 text-white" : "border-zinc-200 bg-[#f5f5f7] hover:border-zinc-950"
+                        bookingData.brand === brand && !bookingData.customBrand ? "border-zinc-950 bg-zinc-950 text-white" : "border-zinc-200 bg-[#f5f5f7] hover:border-zinc-950"
                       }`}
                     >
                       {brand}
                     </button>
                   ))}
                 </div>
-                {bookingData.brand === "Other" ? (
-                  <div className="mt-8">
-                    <label className="block text-sm font-semibold uppercase text-zinc-500" htmlFor="custom-brand">Brand name</label>
-                    <input
-                      id="custom-brand"
-                      value={bookingData.customBrand}
-                      onChange={(event) => updateBooking("customBrand", event.target.value)}
-                      placeholder="Enter brand name"
-                      className="mt-3 w-full rounded-2xl border border-zinc-300 bg-white px-5 py-4 text-lg font-semibold outline-none transition focus:border-zinc-950"
-                    />
-                  </div>
+                <input
+                  value={bookingData.customBrand}
+                  onChange={(event) => {
+                    setBookingData(prev => ({
+                      ...prev,
+                      brand: "Other",
+                      customBrand: event.target.value,
+                      model: "Other model"
+                    }));
+                  }}
+                  placeholder="Other brand..."
+                  className={`mt-4 w-full rounded-2xl border px-5 py-4 text-lg font-semibold outline-none transition ${
+                    bookingData.brand === "Other" ? "border-zinc-950 bg-zinc-950 text-white placeholder:text-zinc-500" : "border-zinc-200 bg-[#f5f5f7] placeholder:text-zinc-400 focus:border-zinc-950"
+                  }`}
+                />
+                {bookingData.brand === "Other" && !bookingData.customBrand.trim() ? (
+                  <p className="mt-2 text-xs font-semibold text-orange-600">Please enter the brand name.</p>
                 ) : null}
                 <label className="mt-8 block text-sm font-semibold uppercase text-zinc-500" htmlFor="model">Model</label>
                 <select
@@ -337,30 +435,59 @@ export default function BookingPage() {
             {step === 2 ? (
               <div>
                 <p className="text-sm font-semibold uppercase text-orange-600">Issue section</p>
-                <h2 className="mt-2 text-4xl font-bold tracking-normal md:text-6xl">What happened?</h2>
+                <div className="mt-2 flex flex-col justify-between gap-4 md:flex-row md:items-end">
+                  <h2 className="text-4xl font-bold tracking-normal md:text-6xl">What happened?</h2>
+                  <button
+                    type="button"
+                    onClick={selectAllIssues}
+                    className="w-fit rounded-full bg-zinc-100 px-6 py-2 text-sm font-bold text-zinc-900 transition hover:bg-zinc-200"
+                  >
+                    Select all
+                  </button>
+                </div>
                 <p className="mt-4 text-lg leading-8 text-zinc-600">Choose the closest issue. If it is not listed, select Other Issue and describe it.</p>
                 <div className="mt-8 grid gap-3 md:grid-cols-2">
                   {ISSUE_OPTIONS.map((issue) => (
                     <button
                       key={issue.name}
                       type="button"
-                      onClick={() => updateBooking("issue", issue.name)}
+                      onClick={() => toggleIssue(issue.name)}
                       className={`rounded-[22px] border p-5 text-left transition ${
-                        bookingData.issue === issue.name ? "border-zinc-950 bg-zinc-950 text-white" : "border-zinc-200 bg-[#f5f5f7] hover:border-zinc-950"
+                        bookingData.issue.includes(issue.name) && !bookingData.issue.includes("Other Issue") ? "border-zinc-950 bg-zinc-950 text-white" : "border-zinc-200 bg-[#f5f5f7] hover:border-zinc-950"
                       }`}
                     >
                       <span className="block text-xl font-bold">{issue.name}</span>
-                      <span className={bookingData.issue === issue.name ? "mt-2 block text-sm text-zinc-300" : "mt-2 block text-sm text-zinc-500"}>{issue.detail}</span>
+                      <span className={bookingData.issue.includes(issue.name) && !bookingData.issue.includes("Other Issue") ? "mt-2 block text-sm text-zinc-300" : "mt-2 block text-sm text-zinc-500"}>{issue.detail}</span>
                     </button>
                   ))}
                 </div>
-                {bookingData.issue === "Other Issue" ? (
-                  <textarea
-                    value={bookingData.issueDetails}
-                    onChange={(event) => updateBooking("issueDetails", event.target.value.slice(0, 240))}
-                    placeholder="Write the issue here, for example: phone heats up, camera not opening, device hangs..."
-                    className="mt-6 min-h-32 w-full rounded-2xl border border-zinc-300 bg-white p-5 text-base outline-none transition focus:border-zinc-950"
-                  />
+                <input
+                  value={bookingData.customIssue}
+                  onChange={(event) => {
+                    setBookingData((prev) => ({ ...prev, issue: ["Other Issue"], customIssue: event.target.value }));
+                  }}
+                  placeholder="Other issue..."
+                  className={`mt-4 w-full rounded-2xl border px-5 py-4 text-lg font-semibold outline-none transition ${
+                    bookingData.issue.includes("Other Issue") ? "border-zinc-950 bg-zinc-950 text-white placeholder:text-zinc-500" : "border-zinc-200 bg-[#f5f5f7] placeholder:text-zinc-400 focus:border-zinc-950"
+                  }`}
+                />
+                
+                {bookingData.issue.length > 0 ? (
+                  <div className="mt-8">
+                    <label className="block text-sm font-semibold uppercase text-zinc-500">Incident explanation</label>
+                    <textarea
+                      value={bookingData.issueDetails}
+                      onChange={(event) => updateBooking("issueDetails", event.target.value.slice(0, 250))}
+                      placeholder="Explain the incident or anything you want to share..."
+                      className="mt-3 min-h-32 w-full rounded-2xl border border-zinc-300 bg-white p-5 text-base outline-none transition focus:border-zinc-950"
+                    />
+                    <div className="mt-2 flex justify-between text-xs font-semibold">
+                      <p className={bookingData.issue.includes("Other Issue") && !bookingData.customIssue.trim() ? "text-orange-600" : "text-zinc-400"}>
+                        {bookingData.issue.includes("Other Issue") && !bookingData.customIssue.trim() ? "Please describe the other issue above." : ""}
+                      </p>
+                      <p className="text-zinc-400">{bookingData.issueDetails.length}/250</p>
+                    </div>
+                  </div>
                 ) : null}
               </div>
             ) : null}
@@ -373,7 +500,7 @@ export default function BookingPage() {
                   Final pricing depends on exact model, part availability, and diagnosis. You pay only after service.
                 </p>
                 <div className="mx-auto mt-8 max-w-xl rounded-[32px] bg-black p-8 text-white">
-                  <p className="text-sm font-semibold uppercase text-zinc-400">{bookingData.issue}</p>
+                  <p className="text-sm font-semibold uppercase text-zinc-400">{displayIssues.join(", ")}</p>
                   <p className="mt-4 text-5xl font-bold tracking-normal">Rs. {estimate.min} - {estimate.max}</p>
                   <p className="mt-4 leading-7 text-zinc-300">
                     Screen related repairs start from Rs. 1000. All other listed issues start from Rs. 500.
@@ -390,7 +517,21 @@ export default function BookingPage() {
                   Click on the OpenStreetMap map to place a pin. This captures latitude and longitude without Google Maps API cost.
                 </p>
                 <div className="mt-8">
-                  <MapPicker value={bookingData.coordinates} onChange={(coords) => updateBooking("coordinates", coords)} />
+                  <MapPicker
+                    value={bookingData.coordinates}
+                    onChange={(coords) => updateBooking("coordinates", coords)}
+                    onLocationFetch={(info) => {
+                      setBookingData((current) => ({
+                        ...current,
+                        addressLine: info.addressLine,
+                        pincode: info.pincode,
+                        nearbyLocation: info.nearbyLocation,
+                        // We also try to match the village if it exists in our list
+                        village: DISTRICT_VILLAGES[current.district].includes(info.village) ? info.village : "Other village",
+                        customVillage: DISTRICT_VILLAGES[current.district].includes(info.village) ? "" : info.village,
+                      }));
+                    }}
+                  />
                 </div>
                 <div className="mt-5 rounded-2xl bg-[#f5f5f7] p-5 text-sm font-semibold text-zinc-600">
                   {bookingData.coordinates ? "Location pin selected." : "No pin selected yet."}
@@ -472,20 +613,50 @@ export default function BookingPage() {
                   </div>
                 </div>
                 <div className="mt-8">
+                  <label className="block text-sm font-semibold uppercase text-zinc-500" htmlFor="date">Booking Date</label>
+                  <select
+                    id="date"
+                    value={bookingData.bookingDate}
+                    onChange={(event) => {
+                      updateBooking("bookingDate", event.target.value);
+                      updateBooking("slot", "");
+                    }}
+                    className="mt-3 w-full rounded-2xl border border-zinc-300 bg-white px-5 py-4 text-lg font-semibold outline-none focus:border-zinc-950"
+                  >
+                    {getNextNDays(5).map((day) => (
+                      <option key={day.value} value={day.value}>{day.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="mt-8">
                   <p className="text-sm font-semibold uppercase text-zinc-500">Arrival slot</p>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                    {SLOTS.map((slot) => (
-                      <button
-                        key={slot}
-                        type="button"
-                        onClick={() => updateBooking("slot", slot)}
-                        className={`rounded-2xl border p-5 text-left text-lg font-semibold transition ${
-                          bookingData.slot === slot ? "border-zinc-950 bg-zinc-950 text-white" : "border-zinc-200 bg-[#f5f5f7] hover:border-zinc-950"
-                        }`}
-                      >
-                        {slot}
-                      </button>
-                    ))}
+                    {SLOTS.map((slot) => {
+                      const isPast = isSlotInPast(slot, bookingData.bookingDate);
+                      const currentCount = slotAvailability[slot] ?? 0;
+                      const isFull = currentCount >= 5;
+                      const isDisabled = isPast || isFull;
+
+                      return (
+                        <button
+                          key={slot}
+                          type="button"
+                          onClick={() => !isDisabled && updateBooking("slot", slot)}
+                          disabled={isDisabled}
+                          className={`flex flex-col rounded-2xl border p-5 text-left transition ${
+                            bookingData.slot === slot
+                              ? "border-zinc-950 bg-zinc-950 text-white"
+                              : isDisabled
+                              ? "border-zinc-100 bg-zinc-50 opacity-50 cursor-not-allowed"
+                              : "border-zinc-200 bg-[#f5f5f7] hover:border-zinc-950"
+                          }`}
+                        >
+                          <span className="text-lg font-semibold">{slot}</span>
+                          {isFull && <span className="mt-1 text-xs text-red-500">Maximum number of slots are booked try another slot.</span>}
+                          {isPast && !isFull && <span className="mt-1 text-xs text-zinc-500">Slot time has passed.</span>}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
                 <div className="mt-6 rounded-[24px] bg-orange-50 p-5 text-base font-semibold text-orange-800">
@@ -534,8 +705,9 @@ export default function BookingPage() {
                   <div className="mt-4 grid gap-3 text-sm md:grid-cols-2">
                     <p><span className="text-zinc-500">Brand:</span> <b>{finalBrand}</b></p>
                     <p><span className="text-zinc-500">Model:</span> <b>{finalModel}</b></p>
-                    <p><span className="text-zinc-500">Issue:</span> <b>{bookingData.issue}</b></p>
+                    <p><span className="text-zinc-500">Issue:</span> <b>{displayIssues.join(", ")}</b></p>
                     <p><span className="text-zinc-500">Location:</span> <b>{finalVillage}, {bookingData.district}</b></p>
+                    <p><span className="text-zinc-500">Date:</span> <b>{bookingData.bookingDate}</b></p>
                     <p><span className="text-zinc-500">Slot:</span> <b>{bookingData.slot}</b></p>
                     <p><span className="text-zinc-500">Address:</span> <b>{bookingData.addressLine}</b></p>
                     <p><span className="text-zinc-500">Pincode:</span> <b>{bookingData.pincode}</b></p>

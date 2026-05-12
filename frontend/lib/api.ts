@@ -119,11 +119,18 @@ export function createOrder(input: {
   latitude: number;
   longitude: number;
   alternate_phone?: string;
+  booking_date: string;
   slot: string;
 }) {
   return request<OrderResponse>("/orders/", {
     method: "POST",
     body: JSON.stringify(input),
+  });
+}
+
+export function getSlotAvailability(date: string) {
+  return request<Record<string, number>>(`/slots/availability?date=${encodeURIComponent(date)}`, {
+    method: "GET",
   });
 }
 

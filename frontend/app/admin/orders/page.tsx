@@ -2,8 +2,14 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { adminLogin, deleteOrder, listAdminOrders, type OrderResponse, updateOrderStatus } from "@/lib/api";
+import dynamic from "next/dynamic";
+import { adminLogin, deleteOrder, listAdminOrders, type OrderResponse, type OrderStatusEvent, updateOrderStatus } from "@/lib/api";
 import { SiteLogo } from "@/components/SiteLogo";
+
+// Dynamically import Leaflet components to avoid SSR issues
+const MapContainer = dynamic(() => import("react-leaflet").then((mod) => mod.MapContainer), { ssr: false });
+const TileLayer = dynamic(() => import("react-leaflet").then((mod) => mod.TileLayer), { ssr: false });
+const Marker = dynamic(() => import("react-leaflet").then((mod) => mod.Marker), { ssr: false });
 
 const STATUS_OPTIONS = [
   "pending_verification",
@@ -14,6 +20,80 @@ const STATUS_OPTIONS = [
   "completed",
   "cancelled",
 ] as const;
+
+function formatDuration(ms: number) {
+  const seconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  const hours = Math.floor(minutes / 60);
+  const days = Math.floor(hours / 24);
+
+  if (days > 0) return `${days}d ${hours % 24}h`;
+  if (hours > 0) return `${hours}h ${minutes % 60}m`;
+  if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
+  return `${seconds}s`;
+}
+
+function StatusTimeline({ events }: { events: OrderStatusEvent[] }) {
+  if (events.length === 0) return <p className="text-xs text-zinc-500">No status history yet.</p>;
+
+  return (
+    <div className="mt-2 space-y-3">
+      {events.map((event, index) => {
+        const nextEvent = events[index + 1];
+        const duration = nextEvent
+          ? new Date(nextEvent.changed_at).getTime() - new Date(event.changed_at).getTime()
+          : null;
+
+        return (
+          <div key={event.id} className="flex gap-2">
+            <div className="flex flex-col items-center">
+              <div className="h-2 w-2 shrink-0 rounded-full bg-zinc-400" />
+              {index < events.length - 1 && <div className="h-full w-px bg-zinc-200" />}
+            </div>
+            <div className="pb-1">
+              <p className="text-xs font-bold text-zinc-800">{event.status.replace(/_/g, " ")}</p>
+              <p className="text-[10px] text-zinc-500">{new Date(event.changed_at).toLocaleString()}</p>
+              {duration !== null && (
+                <p className="mt-1 text-[10px] font-bold text-orange-600">
+                  Stayed for {formatDuration(duration)}
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function OrderMap({ lat, lng }: { lat: number; lng: number }) {
+  // We need to access Leaflet on the client side only
+  const [L, setL] = useState<any>(null);
+
+  useState(() => {
+    if (typeof window !== "undefined") {
+      import("leaflet").then((mod) => setL(mod.default));
+    }
+  });
+
+  if (!L) return <div className="mt-2 h-40 w-full animate-pulse rounded-xl bg-zinc-100" />;
+
+  const pinIcon = L.divIcon({
+    className: "",
+    html: '<div class="h-4 w-4 rounded-full border-2 border-white bg-red-600 shadow-lg"></div>',
+    iconSize: [16, 16],
+    iconAnchor: [8, 8],
+  });
+
+  return (
+    <div className="mt-3 h-40 w-full overflow-hidden rounded-xl border border-zinc-200 shadow-inner">
+      <MapContainer center={[lat, lng]} zoom={15} scrollWheelZoom={false} className="h-full w-full">
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <Marker position={[lat, lng]} icon={pinIcon} />
+      </MapContainer>
+    </div>
+  );
+}
 
 export default function AdminOrdersPage() {
   const [username, setUsername] = useState("");
@@ -215,7 +295,7 @@ export default function AdminOrdersPage() {
                             Alternate: {order.alternate_phone?.trim() ? order.alternate_phone : "N/A"}
                           </p>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="min-w-[280px] px-4 py-3">
                           <p className="font-semibold">{order.device}</p>
                           <p className="text-xs text-zinc-600">
                             Brand/Model: {[order.brand, order.model].filter(Boolean).join(" / ") || "N/A"}
@@ -228,34 +308,35 @@ export default function AdminOrdersPage() {
                             Estimate: Rs. {order.price_min ?? 0} - {order.price_max ?? order.estimated_price ?? 0}
                           </p>
                           <p className="text-xs text-zinc-600">Slot: {order.slot ?? "N/A"}</p>
-                          <div className="mt-2">
-                            <p className="text-xs font-semibold text-zinc-700">Timeline:</p>
-                            <div className="mt-1 space-y-1">
-                              {(order.status_events ?? []).length === 0 ? (
-                                <p className="text-xs text-zinc-500">No status history yet.</p>
-                              ) : (
-                                (order.status_events ?? []).map((event) => (
-                                  <p key={event.id} className="text-xs text-zinc-600">
-                                    {event.status.replace(/_/g, " ")} - {new Date(event.changed_at).toLocaleString()}
-                                  </p>
-                                ))
-                              )}
-                            </div>
+                          
+                          <div className="mt-4 border-t border-zinc-100 pt-3">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Order Timeline</p>
+                            <StatusTimeline events={order.status_events ?? []} />
                           </div>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="min-w-[320px] px-4 py-3">
                           <p className="text-xs text-zinc-700">
                             {[order.address_line, order.village, order.district].filter(Boolean).join(", ") || "N/A"}
                           </p>
                           <p className="text-xs text-zinc-600">Pincode: {order.pincode ?? "N/A"}</p>
                           <p className="text-xs text-zinc-600">Nearby: {order.nearby_location ?? "N/A"}</p>
                           <p className="text-xs text-zinc-600">Landmark: {order.landmark ?? "N/A"}</p>
-                          <p className="text-xs text-zinc-600">
-                            Coords:{" "}
-                            {order.latitude !== null && order.longitude !== null
-                              ? `${order.latitude}, ${order.longitude}`
-                              : "N/A"}
-                          </p>
+                          
+                          {order.latitude !== null && order.longitude !== null ? (
+                            <>
+                              <OrderMap lat={order.latitude} lng={order.longitude} />
+                              <a 
+                                href={`https://www.google.com/maps/search/?api=1&query=${order.latitude},${order.longitude}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-bold text-blue-600 transition hover:bg-blue-100"
+                              >
+                                🗺️ Navigate in Google Maps
+                              </a>
+                            </>
+                          ) : (
+                            <p className="mt-2 text-xs text-zinc-500 italic">No coordinates available</p>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <select

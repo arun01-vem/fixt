@@ -32,6 +32,7 @@ class OrderCreate(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     alternate_phone: Optional[str] = None
+    booking_date: Optional[str] = None
     slot: Optional[str] = None
     customer_id: str
 
@@ -39,6 +40,7 @@ class Order(OrderCreate):
     id: str
     order_number: Optional[str] = None
     status: str
+    booking_date: Optional[str] = None
     created_at: datetime
 
     class Config:

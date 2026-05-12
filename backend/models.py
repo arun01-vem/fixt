@@ -42,12 +42,13 @@ class Order(Base):
     longitude = Column(Float, nullable=True)
     alternate_phone = Column(String, nullable=True)
     status = Column(String, default="pending")
+    booking_date = Column(String, nullable=True)
     slot = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
 
     customer = relationship("Customer", back_populates="orders")
-    status_events = relationship("OrderStatusEvent", back_populates="order", cascade="all, delete-orphan")
+    status_events = relationship("OrderStatusEvent", back_populates="order", cascade="all, delete-orphan", order_by="OrderStatusEvent.changed_at.asc()")
 
 
 class OrderStatusEvent(Base):

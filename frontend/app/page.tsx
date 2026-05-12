@@ -112,6 +112,7 @@ export default function Home() {
                 <a href="#services" className="rounded-2xl px-4 py-3 transition hover:bg-zinc-100">Services</a>
                 <a href="#technicians" className="rounded-2xl px-4 py-3 transition hover:bg-zinc-100">Technicians</a>
                 <a href="#about" className="rounded-2xl px-4 py-3 transition hover:bg-zinc-100">About</a>
+                <a href="#footer" className="rounded-2xl px-4 py-3 transition hover:bg-zinc-100">Contact</a>
               </div>
               <div className="mt-5 rounded-3xl bg-[#f5f5f7] p-5">
                 <p className="text-sm font-semibold text-zinc-950">Track your repair</p>
@@ -308,16 +309,27 @@ export default function Home() {
           <p className="mt-8 leading-6">
             FIXT uses your selected service area to confirm technician availability faster. Manual phone verification is used during MVP launch.
           </p>
-          <div className="mt-8 flex flex-col gap-3 border-t border-zinc-300 pt-6 md:flex-row md:items-center md:justify-between">
+          <div className="mt-8 flex flex-col gap-6 border-t border-zinc-300 pt-6 md:flex-row md:items-start md:justify-between">
             <div className="flex items-center gap-3">
               <SiteLogo size={36} className="h-9 w-9 shrink-0" />
               <p>Copyright 2026 FIXT. All rights reserved.</p>
             </div>
-            <div className="flex flex-wrap gap-x-4 gap-y-2">
-              <a href="#footer">Privacy Policy</a>
-              <a href="#footer">Terms of Service</a>
-              <a href="#footer">Contact</a>
-              <a href="#footer">Instagram</a>
+            <div className="grid grid-cols-2 gap-x-12 gap-y-6 sm:grid-cols-3">
+              <div>
+                <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Legal</p>
+                <div className="mt-3 flex flex-col gap-2">
+                  <a href="#footer" className="transition hover:text-zinc-950">Privacy Policy</a>
+                  <a href="#footer" className="transition hover:text-zinc-950">Terms of Service</a>
+                </div>
+              </div>
+              <div className="sm:col-span-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Contact</p>
+                <div className="mt-3 flex flex-wrap gap-x-6 gap-y-2">
+                  <a href="tel:+918008617460" className="transition hover:text-zinc-950">Mobile No: 8008617460</a>
+                  <a href="https://www.instagram.com/fixt_official?igsh=MXNhdG5hcHgzaHBxdA==" target="_blank" rel="noopener noreferrer" className="transition hover:text-zinc-950">Instagram</a>                  <a href="https://www.youtube.com/@FIXT_OFFICIAL" target="_blank" rel="noopener noreferrer" className="transition hover:text-zinc-950">YouTube</a>
+                  <a href="https://www.facebook.com/share/1CtktCmDYt/" target="_blank" rel="noopener noreferrer" className="transition hover:text-zinc-950">Facebook</a>
+                </div>
+              </div>
             </div>
           </div>
         </div>

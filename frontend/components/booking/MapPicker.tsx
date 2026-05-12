@@ -16,20 +16,47 @@ type MapPickerProps = {
 
 const JAGTIAL_CENTER: [number, number] = [18.7909, 78.9132];
 
-function PinDropHandler({ onChange }: { onChange: (coords: Coordinates) => void }) {
+type LocationInfo = {
+  addressLine: string;
+  pincode: string;
+  village: string;
+  nearbyLocation: string;
+};
+
+function PinDropHandler({ onChange, onLocationFetch }: { onChange: (coords: Coordinates) => void; onLocationFetch: (info: LocationInfo) => void }) {
   useMapEvents({
-    click(event) {
-      onChange({
-        lat: Number(event.latlng.lat.toFixed(6)),
-        lng: Number(event.latlng.lng.toFixed(6)),
-      });
+    async click(event) {
+      const lat = Number(event.latlng.lat.toFixed(6));
+      const lng = Number(event.latlng.lng.toFixed(6));
+      onChange({ lat, lng });
+
+      try {
+        const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&addressdetails=1`);
+        const data = await res.json();
+        
+        if (data && data.address) {
+          const addr = data.address;
+          const village = addr.village || addr.suburb || addr.town || addr.city || "";
+          const road = addr.road || "";
+          const neighbourhood = addr.neighbourhood || addr.suburb || "";
+          
+          onLocationFetch({
+            addressLine: data.display_name || "",
+            pincode: addr.postcode || "",
+            village: village,
+            nearbyLocation: road || neighbourhood || "",
+          });
+        }
+      } catch (err) {
+        console.error("Reverse geocoding failed:", err);
+      }
     },
   });
 
   return null;
 }
 
-export default function MapPicker({ value, onChange }: MapPickerProps) {
+export default function MapPicker({ value, onChange, onLocationFetch }: MapPickerProps & { onLocationFetch: (info: LocationInfo) => void }) {
   const pinIcon = useMemo(
     () =>
       L.divIcon({
@@ -55,7 +82,7 @@ export default function MapPicker({ value, onChange }: MapPickerProps) {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
-        <PinDropHandler onChange={onChange} />
+        <PinDropHandler onChange={onChange} onLocationFetch={onLocationFetch} />
         {markerPosition ? <Marker position={markerPosition} icon={pinIcon} /> : null}
       </MapContainer>
     </div>
