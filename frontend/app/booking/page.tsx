@@ -191,7 +191,7 @@ export default function BookingPage() {
   const availableModels = bookingData.brand === "Other" ? ["Other model"] : (bookingData.brand ? BRAND_MODELS[bookingData.brand] ?? [] : []);
   const availableVillages = DISTRICT_VILLAGES[bookingData.district] ?? [];
   const estimate = useMemo(() => getPrice(bookingData.issue), [bookingData.issue]);
-  const progress = Math.round((step / 7) * 100);
+  const progress = Math.round((step / 6) * 100);
   const finalBrand = bookingData.brand === "Other" ? bookingData.customBrand.trim() : bookingData.brand;
   const finalModel = bookingData.model === "Other model" ? bookingData.customModel.trim() : bookingData.model;
   const finalVillage = bookingData.village === "Other village" ? bookingData.customVillage.trim() : bookingData.village;
@@ -344,7 +344,7 @@ export default function BookingPage() {
             <SiteLogo size={32} className="h-8 w-8 shrink-0" />
             Exit Booking
           </Link>
-          <div className="hidden text-sm font-semibold text-zinc-500 sm:block">Step {step} of 7</div>
+          <div className="hidden text-sm font-semibold text-zinc-500 sm:block">Step {step} of 6</div>
         </header>
 
         <section className="grid gap-8 lg:grid-cols-[0.75fr_1.25fr]">

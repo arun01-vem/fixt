@@ -34,6 +34,10 @@ def client(tmp_path: Path):
 
     main.app.dependency_overrides[main.get_db] = override_get_db
 
+    # Clear rate limit dictionaries before each test
+    main.PHONE_ORDER_ATTEMPTS.clear()
+    main.IP_ORDER_ATTEMPTS.clear()
+
     with TestClient(main.app) as test_client:
         yield test_client
 
@@ -144,6 +148,26 @@ def test_update_order_status_success(client: TestClient):
     assert response.json()["status"] == "in_progress"
 
 
+def test_update_order_status_with_repair_cost_saves_cost(client: TestClient):
+    customer = _create_customer(client, phone="9000000003")
+    order = _create_order(client, customer_id=customer["id"])
+    token = _admin_token(client)
+
+    response = client.patch(
+        f"/orders/{order['id']}/status",
+        json={"status": "in_progress", "repair_cost": 2200},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "in_progress"
+    assert body["repair_cost"] == 2200
+
+    fetched = client.get(f"/orders/{order['order_number']}")
+    assert fetched.status_code == 200
+    assert fetched.json()["repair_cost"] == 2200
+
+
 def test_update_order_status_rejects_invalid_value(client: TestClient):
     customer = _create_customer(client, phone="9000000002")
     order = _create_order(client, customer_id=customer["id"])
@@ -155,4 +179,4 @@ def test_update_order_status_rejects_invalid_value(client: TestClient):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 400
-    assert response.json()["detail"] == "Invalid order status"
+    assert "Invalid order status" in response.json()["detail"]

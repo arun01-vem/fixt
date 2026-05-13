@@ -53,8 +53,20 @@ function SuccessContent() {
         <Link href="/" className="mx-auto mb-5 inline-flex" aria-label="FIXT home">
           <SiteLogo size={44} className="h-11 w-11" />
         </Link>
-        <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-emerald-100 text-4xl font-bold text-emerald-700">
-          ✓
+        <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-emerald-100 text-emerald-700">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            width="40"
+            height="40"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <polyline points="20 6 9 17 4 12" />
+          </svg>
         </div>
         <p className="mt-6 text-sm font-semibold uppercase text-emerald-600">Booking confirmed</p>
         <h1 className="mt-3 text-4xl font-bold tracking-normal md:text-6xl">Your repair is booked.</h1>

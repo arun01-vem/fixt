@@ -40,6 +40,7 @@ class Order(OrderCreate):
     id: str
     order_number: Optional[str] = None
     status: str
+    repair_cost: Optional[float] = None
     booking_date: Optional[str] = None
     created_at: datetime
 
@@ -86,3 +87,4 @@ class AdminLoginResponse(BaseModel):
 
 class OrderStatusUpdateRequest(BaseModel):
     status: str
+    repair_cost: Optional[float] = None

@@ -27,6 +27,7 @@ export type OrderResponse = {
   slot: string | null;
   customer_id: string;
   status: string;
+  repair_cost: number | null;
   created_at: string;
   customer?: {
     id: string;
@@ -166,10 +167,10 @@ export function listAdminOrders(token: string, status?: string) {
   }, { token });
 }
 
-export function updateOrderStatus(token: string, orderId: string, status: string) {
+export function updateOrderStatus(token: string, orderId: string, status: string, repair_cost?: number) {
   return authorizedRequest<OrderResponse>(`/orders/${encodeURIComponent(orderId)}/status`, {
     method: "PATCH",
-    body: JSON.stringify({ status }),
+    body: JSON.stringify({ status, repair_cost }),
   }, { token });
 }
 

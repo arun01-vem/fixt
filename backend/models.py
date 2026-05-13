@@ -42,6 +42,7 @@ class Order(Base):
     longitude = Column(Float, nullable=True)
     alternate_phone = Column(String, nullable=True)
     status = Column(String, default="pending")
+    repair_cost = Column(Float, nullable=True)
     booking_date = Column(String, nullable=True)
     slot = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

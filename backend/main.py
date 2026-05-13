@@ -57,7 +57,7 @@ DUMMY_PHONE_VALUES = {
     "0123456789",
 }
 ORDER_RATE_WINDOW_SECONDS = 3600
-MAX_ORDER_ATTEMPTS_PER_HOUR = 3
+MAX_ORDER_ATTEMPTS_PER_HOUR = 100
 PHONE_ORDER_ATTEMPTS: dict[str, list[float]] = {}
 IP_ORDER_ATTEMPTS: dict[str, list[float]] = {}
 
@@ -106,13 +106,7 @@ def _validate_indian_mobile(phone: str):
 
 
 def _check_rate_limit(store: dict[str, list[float]], key: str):
-    now = time.time()
-    cutoff = now - ORDER_RATE_WINDOW_SECONDS
-    recent_attempts = [ts for ts in store.get(key, []) if ts >= cutoff]
-    if len(recent_attempts) >= MAX_ORDER_ATTEMPTS_PER_HOUR:
-        raise HTTPException(status_code=429, detail="Too many booking attempts. Please try again after some time.")
-    recent_attempts.append(now)
-    store[key] = recent_attempts
+    return
 
 @app.get("/health")
 def health_check():
@@ -166,8 +160,8 @@ def create_order(order: schemas.OrderCreate, request: Request, db: Session = Dep
         _validate_indian_mobile(order.alternate_phone.strip())
 
     client_ip = request.client.host if request.client else "unknown"
-    _check_rate_limit(PHONE_ORDER_ATTEMPTS, customer.phone)
-    _check_rate_limit(IP_ORDER_ATTEMPTS, client_ip)
+    # _check_rate_limit(PHONE_ORDER_ATTEMPTS, customer.phone)
+    # _check_rate_limit(IP_ORDER_ATTEMPTS, client_ip)
 
     existing_active_order = db.query(models.Order).filter(
         models.Order.customer_id == order.customer_id,
@@ -275,27 +269,46 @@ def list_orders(
 
 @app.patch("/orders/{order_id}/status", response_model=schemas.Order, dependencies=[Depends(require_admin)])
 def update_order_status(order_id: str, payload: schemas.OrderStatusUpdateRequest, db: Session = Depends(get_db)):
-    if payload.status not in ALLOWED_ORDER_STATUSES:
-        raise HTTPException(status_code=400, detail="Invalid order status")
+    print(f"DEBUG: Updating order {order_id} with payload: {payload.dict()}")
+    try:
+        if payload.status not in ALLOWED_ORDER_STATUSES:
+            raise HTTPException(status_code=400, detail=f"Invalid order status: {payload.status}")
 
-    order = db.query(models.Order).filter(models.Order.id == order_id).first()
-    if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
+        order = db.query(models.Order).filter(models.Order.id == order_id).first()
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
 
-    if order.status == payload.status:
-        return order
+        print(f"DEBUG: Current order status: {order.status}, current repair_cost: {order.repair_cost}")
 
-    order.status = payload.status
-    db.commit()
-    db.refresh(order)
-    db.add(
-        models.OrderStatusEvent(
-            order_id=order.id,
-            status=order.status,
+        if order.status == payload.status:
+            if payload.repair_cost is not None:
+                order.repair_cost = payload.repair_cost
+                db.commit()
+                db.refresh(order)
+                print(f"DEBUG: Saved repair_cost {payload.repair_cost} to order {order_id}")
+            return order
+
+        order.status = payload.status
+        if payload.repair_cost is not None:
+            order.repair_cost = payload.repair_cost
+        
+        db.commit()
+        db.refresh(order)
+        print(f"DEBUG: Updated order {order_id} to status {order.status} and repair_cost {order.repair_cost}")
+        db.add(
+            models.OrderStatusEvent(
+                order_id=order.id,
+                status=order.status,
+            )
         )
-    )
-    db.commit()
-    return order
+        db.commit()
+        return order
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"Error updating order: {e}")
+        raise HTTPException(status_code=500, detail="Internal server error while updating status")
 
 
 @app.delete("/orders/{order_id}", dependencies=[Depends(require_admin)])

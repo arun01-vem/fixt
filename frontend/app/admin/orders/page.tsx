@@ -108,6 +108,8 @@ export default function AdminOrdersPage() {
   const [deletingOrderId, setDeletingOrderId] = useState("");
   const [pendingDeleteOrder, setPendingDeleteOrder] = useState<OrderResponse | null>(null);
   const [deleteConfirmationText, setDeleteConfirmationText] = useState("");
+  const [pendingCostOrder, setPendingCostOrder] = useState<{ id: string; status: string } | null>(null);
+  const [repairCostInput, setRepairCostInput] = useState("");
 
   const isLoggedIn = useMemo(() => Boolean(token), [token]);
 
@@ -140,11 +142,46 @@ export default function AdminOrdersPage() {
 
   async function handleStatusChange(orderId: string, status: string) {
     if (!token) return;
+
+    // If setting to in_progress, we MUST get a price
+    if (status === "in_progress") {
+      setPendingCostOrder({ id: orderId, status });
+      setRepairCostInput("");
+      return;
+    }
+
     setSavingOrderId(orderId);
     setError("");
     try {
-      await updateOrderStatus(token, orderId, status);
-      await loadOrders();
+      const updatedOrder = await updateOrderStatus(token, orderId, status);
+      // Update local state immediately
+      setOrders(prev => prev.map(o => o.id === orderId ? updatedOrder : o));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Status update failed.");
+    } finally {
+      setSavingOrderId("");
+    }
+  }
+
+  async function confirmCostOrder() {
+    if (!token || !pendingCostOrder) return;
+    const cost = parseFloat(repairCostInput);
+    if (isNaN(cost) || cost < 0) {
+      setError("Please enter a valid repair cost.");
+      return;
+    }
+
+    setSavingOrderId(pendingCostOrder.id);
+    setError("");
+    try {
+      const updatedOrder = await updateOrderStatus(token, pendingCostOrder.id, pendingCostOrder.status, cost);
+      console.log("DEBUG: Admin updated order:", updatedOrder);
+
+      // Update local state immediately
+      setOrders(prev => prev.map(o => o.id === pendingCostOrder.id ? updatedOrder : o));
+
+      setPendingCostOrder(null);
+      setRepairCostInput("");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Status update failed.");
     } finally {
@@ -270,6 +307,7 @@ export default function AdminOrdersPage() {
                     <th className="px-4 py-3 text-left font-semibold text-zinc-600">Repair details</th>
                     <th className="px-4 py-3 text-left font-semibold text-zinc-600">Location details</th>
                     <th className="px-4 py-3 text-left font-semibold text-zinc-600">Status</th>
+                    <th className="px-4 py-3 text-left font-semibold text-zinc-600">Final Cost</th>
                     <th className="px-4 py-3 text-left font-semibold text-zinc-600">Created</th>
                     <th className="px-4 py-3 text-left font-semibold text-zinc-600">Actions</th>
                   </tr>
@@ -277,7 +315,7 @@ export default function AdminOrdersPage() {
                 <tbody className="divide-y divide-zinc-100 bg-white">
                   {orders.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-6 text-center font-semibold text-zinc-500">
+                      <td colSpan={8} className="px-4 py-6 text-center font-semibold text-zinc-500">
                         No orders loaded yet.
                       </td>
                     </tr>
@@ -291,52 +329,30 @@ export default function AdminOrdersPage() {
                         <td className="px-4 py-3">
                           <p className="font-semibold">{order.customer?.name ?? "N/A"}</p>
                           <p className="text-xs text-zinc-600">Phone: {order.customer?.phone ?? "N/A"}</p>
-                          <p className="text-xs text-zinc-600">
-                            Alternate: {order.alternate_phone?.trim() ? order.alternate_phone : "N/A"}
-                          </p>
                         </td>
                         <td className="min-w-[280px] px-4 py-3">
                           <p className="font-semibold">{order.device}</p>
-                          <p className="text-xs text-zinc-600">
-                            Brand/Model: {[order.brand, order.model].filter(Boolean).join(" / ") || "N/A"}
-                          </p>
                           <p className="text-xs text-zinc-600">Issue: {order.issue}</p>
-                          <p className="text-xs text-zinc-600">
-                            Details: {order.issue_details?.trim() ? order.issue_details : "N/A"}
-                          </p>
                           <p className="text-xs text-zinc-600">
                             Estimate: Rs. {order.price_min ?? 0} - {order.price_max ?? order.estimated_price ?? 0}
                           </p>
-                          <p className="text-xs text-zinc-600">Slot: {order.slot ?? "N/A"}</p>
-                          
-                          <div className="mt-4 border-t border-zinc-100 pt-3">
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Order Timeline</p>
-                            <StatusTimeline events={order.status_events ?? []} />
-                          </div>
                         </td>
                         <td className="min-w-[320px] px-4 py-3">
                           <p className="text-xs text-zinc-700">
                             {[order.address_line, order.village, order.district].filter(Boolean).join(", ") || "N/A"}
                           </p>
                           <p className="text-xs text-zinc-600">Pincode: {order.pincode ?? "N/A"}</p>
-                          <p className="text-xs text-zinc-600">Nearby: {order.nearby_location ?? "N/A"}</p>
-                          <p className="text-xs text-zinc-600">Landmark: {order.landmark ?? "N/A"}</p>
-                          
+
                           {order.latitude !== null && order.longitude !== null ? (
-                            <>
-                              <OrderMap lat={order.latitude} lng={order.longitude} />
-                              <a 
-                                href={`https://www.google.com/maps/search/?api=1&query=${order.latitude},${order.longitude}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="mt-3 inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-[11px] font-bold text-blue-600 transition hover:bg-blue-100"
-                              >
-                                🗺️ Navigate in Google Maps
-                              </a>
-                            </>
-                          ) : (
-                            <p className="mt-2 text-xs text-zinc-500 italic">No coordinates available</p>
-                          )}
+                            <a
+                              href={`https://www.google.com/maps/search/?api=1&query=${order.latitude},${order.longitude}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-bold text-blue-600 hover:underline"
+                            >
+                              🗺️ View on Maps
+                            </a>
+                          ) : null}
                         </td>
                         <td className="px-4 py-3">
                           <select
@@ -347,20 +363,26 @@ export default function AdminOrdersPage() {
                           >
                             {STATUS_OPTIONS.map((status) => (
                               <option key={status} value={status}>
-                                {status}
+                                {status.replace(/_/g, " ")}
                               </option>
                             ))}
                           </select>
                         </td>
-                        <td className="px-4 py-3">{new Date(order.created_at).toLocaleString()}</td>
+                        <td className="px-4 py-3">
+                          {order.repair_cost !== null ? (
+                            <span className="text-lg font-bold text-orange-600">₹{order.repair_cost}</span>
+                          ) : (
+                            <span className="text-xs text-zinc-400 italic">Not set</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 whitespace-nowrap text-xs">{new Date(order.created_at).toLocaleDateString()}</td>
                         <td className="px-4 py-3">
                           <button
                             type="button"
                             onClick={() => handleDeleteOrder(order)}
-                            disabled={deletingOrderId === order.id}
-                            className="rounded-md bg-red-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-red-700 disabled:opacity-40"
+                            className="text-xs font-bold text-red-600 hover:underline"
                           >
-                            {deletingOrderId === order.id ? "Deleting..." : "Delete"}
+                            Delete
                           </button>
                         </td>
                       </tr>
@@ -409,6 +431,61 @@ export default function AdminOrdersPage() {
                 className="rounded-xl bg-red-600 px-4 py-2 font-semibold text-white disabled:opacity-40"
               >
                 {deletingOrderId === pendingDeleteOrder.id ? "Deleting..." : "Delete permanently"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {pendingCostOrder ? (
+        <div className="fixed inset-0 z-[9999] grid place-items-center bg-black/60 p-5 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl bg-white p-8 shadow-2xl ring-1 ring-black/5">
+            <h2 className="text-2xl font-bold text-zinc-900">Set Repair Cost</h2>
+
+            {/* Display Min-Max Price Context */}
+            {(() => {
+              const order = orders.find(o => o.id === pendingCostOrder.id);
+              if (!order) return null;
+              return (
+                <div className="mt-4 rounded-2xl bg-orange-50 p-4 border border-orange-100">
+                  <p className="text-xs font-bold uppercase text-orange-600 tracking-wider">Estimated Range Provided to User</p>
+                  <p className="mt-1 text-lg font-bold text-orange-900">
+                    ₹{order.price_min ?? 0} — ₹{order.price_max ?? order.estimated_price ?? 0}
+                  </p>
+                  <p className="mt-1 text-[10px] text-orange-700 font-medium">Please set the final amount based on the actual repair needed.</p>
+                </div>
+              );
+            })()}
+
+            <div className="mt-6">
+              <label className="text-xs font-bold uppercase text-zinc-400 tracking-widest">Final Amount (INR)</label>
+              <input
+                type="number"
+                autoFocus
+                value={repairCostInput}
+                onChange={(event) => setRepairCostInput(event.target.value)}
+                placeholder="e.g. 1500"
+                className="mt-2 w-full rounded-2xl border border-zinc-200 bg-zinc-50 px-5 py-4 text-xl font-bold outline-none focus:border-orange-500 focus:bg-white transition-all shadow-inner"
+              />
+            </div>
+            <div className="mt-8 flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingCostOrder(null);
+                  setRepairCostInput("");
+                }}
+                className="flex-1 rounded-2xl border border-zinc-200 px-4 py-4 font-bold text-zinc-600 transition hover:bg-zinc-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmCostOrder}
+                disabled={savingOrderId === pendingCostOrder.id || !repairCostInput.trim()}
+                className="flex-[1.5] rounded-2xl bg-orange-600 px-4 py-4 font-bold text-white shadow-lg shadow-orange-200 transition hover:bg-orange-700 hover:scale-[1.02] active:scale-95 disabled:opacity-40"
+              >
+                {savingOrderId === pendingCostOrder.id ? "Saving..." : "Confirm & Update"}
               </button>
             </div>
           </div>
